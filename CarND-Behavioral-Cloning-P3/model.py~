@@ -1,0 +1,143 @@
+# usr/env/ python
+
+"""
+Coded by luke at 21st Sep 2017
+
+"""
+import os
+import csv
+from keras.models import Sequential, Model 
+from keras.layers import Cropping2D, Convolution2D, Input, Flatten, Dense, MaxPooling2D, Activation, Dropout, Lambda
+from sklearn.utils import shuffle
+from sklearn.model_selection import train_test_split
+import matplot.pyplot as plt 
+import cv2
+import numpy as np 
+import sklearn
+
+# Reading the data from the csv file
+samples = []
+with open('./data/driving_log.csv') as csvfile:
+	reader = csv.reader(csvfile)
+	for line in reader:
+		samples.append(line)
+
+train_samples,validation_samples = train_test_split(samples,test_size=0.3)
+
+print(samples[0])
+# Define the generator for reading and preprocessing the data
+
+def generator(samples,batch_size=35):
+	num_samples = len(samples)
+	while 1: # Always running
+		shuffle(samples)
+		for offset in range(1,num_samples,batch_size):
+			batch_samples = samples[offset:offset+batch_size]
+
+			images = []
+			angles = []
+			for batch_sample in batch_samples:
+				correction = 0.1
+
+				#center images
+				name = './data/IMG/' + batch_sample[0].split('/')[-1]
+				center_image = cv2.imread(name)
+				center_angle = float(batch_sample[3])
+				images.append(center_image)
+				angles.append(center_angle)
+				images.append(cv2.flip(center_image,1))
+				angles.append(-center_angle)
+
+
+				# left camera images
+				name = './data/IMG/' + batch_sample[1].split('/')[-1]
+				left_image = cv2.imread(name)
+				angle = center_angle + correction
+				images.append(left_image)
+				angles.append(angle)
+				images.append(cv2.flip(left_imgae,1))
+				angles.append(-angle)
+
+				# Right camera
+				name = './data/IMG/' + batch_sample[3].split('/')[-1]
+				right_image = cv2.imread(name)
+				angle = center_angle - correction
+				images.append(right_image)
+				angles.append(angle)
+				images.append(cv2.flip(right_image,1))
+				angles.append(-angle)
+
+			# Trim the image for eliminating the distraction of the sky and hood in the image
+			X_train = np.array(images)
+			y_train = np.array(angles)
+
+			X_train,y_train = shuffle(X_train,y_train)
+			yield X_train,y_train 
+
+
+# Compile and train the model using the generator function
+train_generator = generator(train_samples,batch_size=35)
+validation_generator = generator(validation_samples,batch_size=35)
+
+ch,row,col = 3,90,320
+
+#regression nework based on the keras, not using softmax for classification
+mdoel = Sequential()
+
+#Preprocessing the data, center around zero with small standard deviation
+
+#crop 50 from top, 20 from bottom, 0 and 0 for the left and right sides
+model.add(Cropping2D(cropping=((50,20),(0,0)),input_shape = (160,320,3)))
+model.add(Lambda(lambda x: (x /255.0) - 0.5),input_shape=(90,320,3),output_shape=(90,320,3))
+
+# Convolution 1
+model.add(Convolution2D(24,5,5,subsample=(2,2),activation='relu'))
+
+# Convolution 2
+model.add(Convolution2D(36,5,5),subsample=(2,2),activation='relu')
+
+
+# Convolution 3
+model.add(Convolution2D(38,5,5),subsample=(2,2),activation='relu')
+
+
+# Convolution 4
+model.add(Convolution2D(64,3,3),activation='relu')
+
+# Convolution 5
+model.add(Convolution2D(128,3,3),ACTIVATION='relu')
+
+model.add(Flatten())
+
+# Fully connected layer1
+model.add(Dense(50))
+model.add(Activation('relu'))
+model.add(Dropout(0.2))
+
+# Fully connected layer2
+model.add(Dense(10))
+model.add(Activation('relu'))
+model.add(Dropout(0.2))
+
+# Fully connected layer3
+model.add(Dense(1))
+
+# MSE (Mean Square Error) 
+model.compile(loss='mse',optimizer='adam')
+
+
+history_object = fit_generator(train_generator,samples_per_epoch= len(train_samples)*6,validation_data=validation_generator,nb_val_samples=len(validation_samples) * 6,nb_epoch=5)
+
+## Print the keys contained in the history object
+print(history_object.history.keys())
+
+# plot the training and validation in the history for each epoch 
+plt.plot(history_object.history['loss'])
+plt.plot(history_object.history['val_loss'])
+plt.title('Model Mean Square Error Loss')
+plt.ylabel('Mean Square Error Loss')
+plt.xlabel('epoch')
+plt.legend(['trainning set','validaiton set'],loc='upper right')
+plt.show()
+
+model.save('model.h5')
